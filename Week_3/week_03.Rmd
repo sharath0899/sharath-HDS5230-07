@@ -1,0 +1,119 @@
+---
+title: "Untitled"
+author: "sharath kasula"
+date: "2025-02-07"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+
+```{r}
+getwd()
+```
+```{r}
+setwd( "/Users/sharath/Desktop/Sharath.r")
+```
+
+```{r}
+# Load necessary libraries
+library(geosphere)
+library(dplyr)
+library(microbenchmark)
+
+```
+
+```{r}
+# Define the Haversine function
+haversine <- function(lat1, lon1, lat2, lon2) {
+  MILES <- 3959  # Radius of Earth in miles
+  lat1 <- deg2rad(lat1)
+  lon1 <- deg2rad(lon1)
+  lat2 <- deg2rad(lat2)
+  lon2 <- deg2rad(lon2)
+  
+  dlat <- lat2 - lat1
+  dlon <- lon2 - lon1
+  a <- sin(dlat / 2)^2 + cos(lat1) * cos(lat2) * sin(dlon / 2)^2
+  c <- 2 * asin(sqrt(a))
+  
+  return(MILES * c)
+}
+```
+
+```{r}
+# Simulate sample data
+set.seed(42)
+num_rows <- 1000
+df <- data.frame(
+  latitude = runif(num_rows, 34, 42),
+  longitude = runif(num_rows, -118, -74)
+)
+```
+
+```{r}
+# 1. For-loop approach
+haversine_looping <- function(df) {
+  distance_list <- numeric(nrow(df))
+  for (i in 1:nrow(df)) {
+    distance_list[i] <- haversine(40.671, -73.985, df$latitude[i], df$longitude[i])
+  }
+  return(distance_list)
+}
+
+```
+
+```{r}
+# 2. Apply-based approach using apply()
+haversine_apply <- function(df) {
+  return(apply(df, 1, function(row) haversine(40.671, -73.985, row["latitude"], row["longitude"])))
+}
+```
+
+```{r}
+# 3. Vectorized approach using mutate() from dplyr
+haversine_vectorized <- function(df) {
+  df <- df %>%
+    mutate(distance = distHaversine(matrix(c(longitude, latitude), ncol = 2),
+                                    matrix(c(rep(-73.985, nrow(df)), rep(40.671, nrow(df))), ncol = 2)) * 0.000621371)
+  return(df$distance)
+}
+```
+
+```{r}
+# Measure execution times
+timing_results <- microbenchmark(
+  For_Loop = haversine_looping(df),
+  Apply = haversine_apply(df),
+  Vectorized = haversine_vectorized(df),
+  times = 10
+)
+```
+
+```{r}
+# Print timing results
+print(timing_results)
+```
+
