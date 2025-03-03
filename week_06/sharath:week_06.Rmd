@@ -1,0 +1,315 @@
+---
+-title: "week-06"
+author: "sharth kasula"
+date: "2025-03-03"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+```{r}
+if (!requireNamespace("sf", quietly = TRUE)) install.packages("sf")
+if (!requireNamespace("tidyverse", quietly = TRUE)) install.packages("tidyverse")
+if (!requireNamespace("ggplot2", quietly = TRUE)) install.packages("ggplot2")
+if (!requireNamespace("GA", quietly = TRUE)) install.packages("GA")
+if (!requireNamespace("geosphere", quietly = TRUE)) install.packages("geosphere")
+
+```
+
+```{r}
+library(tidyverse)
+library(sf)
+library(ggplot2)
+library(GA)
+library(geosphere)
+library(purrr)
+```
+
+```{r}
+getwd()
+setwd("/Users/sharath/Desktop/week_06 files")
+```
+
+```{r}
+
+```
+
+## Load Data
+```{r}
+# Load Missouri residential locations
+df_residents <- read.csv("Mo_pop_Sim.csv")
+head(df_residents)
+
+```
+```{r}
+getwd()
+setwd("/Users/sharath/Desktop/week_06 files/MO_2018_Federally_Qualified_Health_Center_Locations")
+```
+
+```{r}
+# Load FQHC locations using sf (shapefile data)
+fqhc_locations <- st_read("MO_2018_Federally_Qualified_Health_Center_Locations.shp")
+head(fqhc_locations)
+```
+
+```{r}
+# Print column names to verify
+print("Column names in FQHC dataset:")
+print(colnames(fqhc_locations))
+
+print("Column names in Residents dataset:")
+print(colnames(df_residents))
+```
+
+## Preprocess Data
+```{r}
+# Load required libraries
+library(GA)
+library(geosphere)
+library(dplyr)
+library(sf)
+
+# Load the dataset
+fqhc_locations <- st_read("MO_2018_Federally_Qualified_Health_Center_Locations.shp")
+
+# Print column names to check their actual names
+print("Column names in FQHC dataset:")
+print(colnames(fqhc_locations))
+
+# Identify the closest matching column names
+available_columns <- colnames(fqhc_locations)
+expected_columns <- c("FACILITY", "LATITUDE", "LONGITUDE")
+
+# Use case-insensitive matching to find the correct column names
+matched_columns <- sapply(expected_columns, function(col) {
+  grep(col, available_columns, ignore.case = TRUE, value = TRUE)
+})
+
+# If any expected column is missing, display an error and print available columns
+if (any(sapply(matched_columns, length) == 0)) {
+  cat("\nError: One or more expected columns are missing. Available columns:\n")
+  print(available_columns)
+  stop("Please check column names in the dataset.")
+}
+
+# Select the correct column names dynamically
+fqhc_locations <- fqhc_locations %>% select(all_of(unlist(matched_columns)))
+
+# Print the selected columns for verification
+print("Selected columns from FQHC dataset:")
+print(colnames(fqhc_locations))
+
+
+```
+
+## Define Fitness Function
+```{r}
+# Function to compute number of residents within 30-mile radius
+compute_fitness <- function(selected_indices) {
+  selected_centers <- fqhc_locations[selected_indices, ]
+  total_residents <- 0
+  for (i in 1:nrow(selected_centers)) {
+    distances <- distHaversine(matrix(c(df_residents$Longitude, df_residents$Latitude), ncol=2),
+                               matrix(c(selected_centers$LONGITUDE[i], selected_centers$LATITUDE[i]), ncol=2))
+    total_residents <- total_residents + sum(distances <= 48280)  # 30 miles in meters
+  }
+  return(total_residents)
+}
+```
+
+# APPROACH 1: Average closeness score
+```{r}
+calculate_avg_distance <- function() {
+  avg_distances <- numeric(nrow(fqhc.coords))
+  
+  for (i in 1:nrow(fqhc.coords)) {
+    fqhc_loc <- c(fqhc.coords$LONGITUDE[i], fqhc.coords$LATITUDE[i])
+    distances <- distHaversine(matrix(c(sample.data$long, sample.data$lat), ncol=2),
+                             matrix(rep(fqhc_loc, each=nrow(sample.data)), ncol=2))
+
+    avg_distances[i] <- mean(distances)
+  }
+  fqhc.coords[, avg_distance := avg_distances]
+  return(fqhc.coords)
+}
+
+```
+
+# APPROACH 2: Population density within 30-mile radius
+```{r}
+calculate_pop_density <- function() {
+  density_counts <- numeric(nrow(fqhc.coords))
+  
+  for (i in 1:nrow(fqhc.coords)) {
+    fqhc_loc <- c(fqhc.coords$LONGITUDE[i], fqhc.coords$LATITUDE[i])
+    distances <- distHaversine(matrix(c(sample.data$long, sample.data$lat), ncol=2),
+                             matrix(rep(fqhc_loc, each=nrow(sample.data)), ncol=2))
+    density_counts[i] <- sum(distances <= 48280)
+  }
+  fqhc.coords[, pop_density := density_counts * (1/frac)]
+  return(fqhc.coords)
+}
+```
+
+
+
+
+
+```{r}
+# For approach 1: Lower average distance is better
+top_by_distance <- fqhc.data[order(avg_distance)][1:8, .(OBJECTID, Facility, City, avg_distance)]
+print(top_by_distance)
+```
+
+```{r}
+# For approach 2: Higher population count within 30 miles is better
+top_by_pop <- fqhc.data[order(-estimated_pop_in_30mi)][1:8, 
+                                              .(OBJECTID, Facility, City, estimated_pop_in_30mi)]
+print(top_by_pop)
+```
+
+```{r}
+# Create a combined score using normalized rank-based method
+fqhc.data$dist_rank <- rank(fqhc.data$avg_distance)  # Rank based on distance (lower is better)
+fqhc.data$pop_rank <- rank(-fqhc.data$estimated_pop_in_30mi)  # Rank based on population (higher is better)
+
+# Compute the combined score as an average of the normalized ranks
+fqhc.data$combined_score <- (fqhc.data$dist_rank + fqhc.data$pop_rank) / (2 * nrow(fqhc.data))
+
+# Select the top 8 FQHCs based on the combined score
+top_combined <- fqhc.data[order(fqhc.data$combined_score)][1:8, 
+                      .(OBJECTID, Facility, City, avg_distance, estimated_pop_in_30mi)]
+
+# Display the results
+cat("\nTop 8 FQHCs by Combined Score:\n")
+print(top_combined)
+
+```
+
+```{r}
+# Load required libraries
+library(GA)
+library(geosphere)
+
+# Ensure required datasets exist
+if (!exists("fqhc_coords") || !exists("pop_coords")) {
+  stop("Error: Required datasets fqhc_coords or pop_coords are missing.")
+}
+
+# Define the fitness function
+fitness_function <- function(indices) {
+  # Ensure indices are within valid range
+  if (any(indices < 1 | indices > nrow(fqhc_coords))) {
+    return(-Inf)  # Assign very low fitness for invalid selections
+  }
+  
+  selected_fqhc <- fqhc_coords[indices, ]  # Select FQHCs based on indices
+  total_pop <- 0  # Initialize total population count
+  
+  for (i in 1:nrow(selected_fqhc)) {
+    fqhc_coord <- selected_fqhc[i, ]  # Extract FQHC coordinates
+    
+    # Calculate distances from selected FQHC to all population locations
+    distances <- distHaversine(
+      matrix(c(fqhc_coord$Longitude, fqhc_coord$Latitude), ncol = 2),
+      matrix(c(pop_coords$long, pop_coords$lat), ncol = 2)
+    )
+    
+    # Sum the population within a 30-mile radius (converted to meters)
+    total_pop <- total_pop + sum(distances <= (30 * 1609.34))
+  }
+  
+  return(total_pop)  # Return the total population served
+}
+
+# Define Genetic Algorithm (GA) parameters
+num_fqhcs <- nrow(fqhc_coords)  # Total number of FQHCs
+n_select <- 8  # Number of FQHCs to select
+
+# Debugging: Print available FQHC locations
+cat("Total FQHC locations available:", num_fqhcs, "\n")
+
+# Ensure there are enough FQHCs to select 8
+if (num_fqhcs < n_select) {
+  stop("Error: The number of available FQHCs is less than the required selection (8).")
+}
+
+# Run the Genetic Algorithm
+ga_result <- ga(
+  type = "permutation",
+  fitness = function(indices) {
+    indices <- round(indices)  # Ensure indices are integers
+    indices <- pmax(pmin(indices, num_fqhcs), 1)  # Keep indices within valid range
+    
+    if (length(unique(indices)) != n_select) {
+      return(-Inf)  # Penalize solutions with duplicate selections
+    }
+    
+    return(fitness_function(indices))
+  },
+  lower = rep(1, n_select),  # Ensure lower bound is 1 for all selections
+  upper = rep(num_fqhcs, n_select),  # Ensure upper bound matches total FQHCs
+  popSize = 50, maxiter = 100, run = 50,  # Increase iterations for better optimization
+  pmutation = 0.2,
+  crossover = gareal_blxCrossover,  # Use real-valued crossover method
+  elitism = 2
+)
+
+# Extract the best solution
+best_indices <- round(ga_result@solution[1, ])
+
+# Debugging: Check if best_indices are valid
+if (any(best_indices < 1 | best_indices > num_fqhcs)) {
+  stop("Error: GA returned invalid indices. Please check dataset and constraints.")
+}
+
+# Select the best FQHCs
+best_fqhc <- fqhc_coords[best_indices, c("OBJECTID", "Facility", "City", "estimated_pop_in_30mi")]
+
+# Print the best locations
+cat("\nBest 8 FQHC Locations for Maximum Population Coverage:\n")
+print(best_fqhc)
+
+```
+
+
+
+
+Strategic Selection of FQHC Sites for Mental Health Service Delivery
+The population coverage approach, which considers residents within a 30-mile radius, will serve as the primary fitness function for selecting Federally Qualified Health Center (FQHC) sites for mental health service delivery. The objective is to maximize population coverage, ensuring that the chosen facilities serve the largest number of people in need of mental health services. By prioritizing FQHCs located in densely populated areas, limited resources can be allocated efficiently, reaching the greatest number of individuals while promoting equitable healthcare access.
+
+This approach aligns with public health goals, as it enhances mental health service availability for diverse populations while addressing healthcare disparities. Several key assumptions underlie this model:
+
+A 30-mile radius is considered an appropriate distance for mental health service access.
+The demand for mental health services is assumed to be consistent across all populations, without adjusting for demographic variations.
+All candidate FQHCs are presumed to have equal capacity to support additional mental health services.
+Service delivery capacity is assumed to be uniform across selected sites, with patient count as the primary selection criterion.
+Fitness Function and Population Coverage Calculation
+The fitness function evaluates each FQHC site based on the total number of residents within 30 miles. This is determined by computing Haversine distances between FQHC locations and population data points, counting individuals whose distance to a facility does not exceed 30 miles. The raw count is then adjusted using a sampling fraction to estimate actual population coverage. The selection process aims to maximize this value, ensuring that the highest number of people gain access to mental health services.
+
+Societal and Financial Benefits
+From both a public health and economic perspective, this method is highly effective. By prioritizing sites with high population density, the allocation of scarce mental health resources is optimized, leading to a greater reduction in untreated mental health conditions. Additionally, a higher concentration of patients contributes to financial sustainability, as it increases service utilization rates, enhances operational efficiency, and supports the long-term viability of mental health programs.
+
+This strategic approach ensures that mental health services reach the largest possible population, improving healthcare outcomes while maintaining cost-effectiveness and equity in service distribution.
