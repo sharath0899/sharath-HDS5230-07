@@ -1,0 +1,92 @@
+---
+title: "Big dataset"
+author: "sharath kasula"
+date: "2025-04-28"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+  
+```{r}
+library(xgboost)
+library(mlbench)
+library(data.table)
+library(tictoc)
+```
+
+```{r}
+# Step 1: Function to generate synthetic big dataset
+generate_big_dataset <- function(size) {
+  data(PimaIndiansDiabetes2)
+  df <- na.omit(PimaIndiansDiabetes2)
+  set.seed(123)
+  df_sample <- df[sample(1:nrow(df), size = size, replace = TRUE), ]
+  df_sample$outcome <- ifelse(df_sample$diabetes == "pos", 1, 0)
+  df_sample <- df_sample[, -which(names(df_sample) == "diabetes")]
+  return(df_sample)
+}
+
+```
+
+```{r}
+# Step 2: Prepare sizes and empty results storage
+sizes <- c(100000, 1000000)  # 100k and 1M
+big_results <- data.frame(Method = character(), Size = integer(), Accuracy = numeric(), Time = numeric())
+
+```
+
+```{r}
+# Step 3: Loop through each dataset size and train fast XGBoost
+for (size in sizes) {
+  cat("\nRunning for size:", size, "\n")
+  
+  df <- generate_big_dataset(size)
+  X <- as.matrix(df[, -ncol(df)])
+  y <- df$outcome
+  
+  dtrain <- xgb.DMatrix(data = X, label = y)
+  
+  params <- list(
+    objective = "binary:logistic",
+    max_depth = 2,
+    eta = 1
+  )
+  
+  tic()
+  model <- xgb.cv(params = params, data = dtrain, nfold = 5, nrounds = 2, metrics = "error", verbose = 0)  # Only 2 boosting rounds
+  time_taken <- toc(quiet = TRUE)
+  
+  accuracy <- 1 - min(model$evaluation_log$test_error_mean)
+  
+  big_results <- rbind(big_results, data.frame(Method = "R xgboost() direct", Size = size, Accuracy = round(accuracy * 100, 2), Time = round(time_taken$toc - time_taken$tic, 2)))
+}
+```
+```{r}
+# Step 4: Print and save results
+print(big_results)
+write.csv(big_results, "big_xgboost_results_R.csv", row.names = FALSE)
+cat("\n✅ Big dataset R results saved to 'big_xgboost_results_R.csv'\n")
+```
+
