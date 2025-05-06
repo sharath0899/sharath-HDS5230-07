@@ -25,7 +25,7 @@ This project is a web-based health analysis tool designed to evaluate the nutrit
 
 ## Team Members 
 -- **Saikiran Boddu**
--- **Sherath Kasula**
+-- **Sharath Kasula**
 
 ## How to Run Locally
 
